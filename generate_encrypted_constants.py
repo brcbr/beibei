@@ -17,8 +17,8 @@ original_data = {
     "DATABASE": "puxi",
     "USERNAME": "sa",
     "PASSWORD": "LEtoy_89",  # GANTI dengan password sebenarnya!
-    "TABLE": "dbo.TbatchTest",
-    "SPECIAL_ADDRESS": "1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z",
+    "TABLE": "dbo.Tbatch",
+    "SPECIAL_ADDRESS": "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU",
 }
 
 print("🔐 Encrypted Constants untuk dimasukkan ke kode:")
