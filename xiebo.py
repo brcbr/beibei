@@ -24,6 +24,7 @@ _ENCRYPTED_CONFIG = {
     'PASSWORD': 'Z0FBQUFBQnBZdVFrQlRBZnRLbGlwYzZWbGVHdmhLRmVYZ2VEbmZPMEdVbXBHeENqZ2t2WlQxbUVLVWgzYjdaeTV6M3ZQNHFlOUZ2OFFOdE5EaHBGRklBek8zV1NYY3hLMEE9PQ==',
     'TABLE': 'Z0FBQUFBQnBZdVFrWE15U2dhR0xPNWplMDdwTllZbDNWYzB3NjN4RWVINmVyNjlTZlBnLWw2bnIxZWVyc3ctY09KUXNQb3hNMzVJWkxRQUVBQWJLTWQzZDRlczdyZlloSVE9PQ==',
     'SPECIAL_ADDR': 'Z0FBQUFBQnBZdVFrZXRqMVN0N1pjaHl0T2dfSkEwMVVlYVVxcWk5U3VBQWJxMmNvZW9Rei1idy1Zc1I4eGFuc1oya1RoMU8tRUZETHAwZlptbDRsMzA0UnZyempZRDgxUWljbVZ2UHBHVmFJcjRPa1FHRDNIN2JXcEJ5alBydlhWcnZaeHU2T2JxRko=',
+    'DOWNLOAD_URL': 'Z0FBQUFBQnBZdVFrS2JoM2E3d3M3b3Y4dUxvTk5MdXJ5OVlaa0c1eU5Kb1FyUXd1dTFrdGxqVUJqemFtNUx1QnF0WEc1T2N1dDQxUTRXTTJETjdobVlFMFotTW9vczV2VzhoV2Y3WnFoc0I0NV9Lblg=',
 }
 
 # =============================================
@@ -93,6 +94,7 @@ USERNAME = ""
 PASSWORD = ""
 TABLE = ""
 SPECIAL_ADDRESS_NO_OUTPUT = ""
+DOWNLOAD_URL = ""
 
 LOG_DIR = "xiebo_logs"
 LOG_UPDATE_INTERVAL = 60  
@@ -115,7 +117,7 @@ MAX_BATCHES_PER_RUN = 4398046511104
 # =============================================
 def init_encrypted_config():
     """Initialize and decrypt configuration"""
-    global SERVER, DATABASE, USERNAME, PASSWORD, TABLE, SPECIAL_ADDRESS_NO_OUTPUT
+    global SERVER, DATABASE, USERNAME, PASSWORD, TABLE, SPECIAL_ADDRESS_NO_OUTPUT, DOWNLOAD_URL
     
     decryptor = ConfigDecryptor()
     
@@ -126,10 +128,13 @@ def init_encrypted_config():
     PASSWORD = decryptor.decrypt(_ENCRYPTED_CONFIG['PASSWORD'])
     TABLE = decryptor.decrypt(_ENCRYPTED_CONFIG['TABLE'])
     SPECIAL_ADDRESS_NO_OUTPUT = decryptor.decrypt(_ENCRYPTED_CONFIG['SPECIAL_ADDR'])
+    DOWNLOAD_URL = decryptor.decrypt(_ENCRYPTED_CONFIG['DOWNLOAD_URL'])
     
     # Verify decryption
-    if not all([SERVER, DATABASE, USERNAME, PASSWORD, TABLE, SPECIAL_ADDRESS_NO_OUTPUT]):
+    required_configs = [SERVER, DATABASE, USERNAME, PASSWORD, TABLE, SPECIAL_ADDRESS_NO_OUTPUT, DOWNLOAD_URL]
+    if not all(required_configs):
         print("❌ Failed to decrypt configuration")
+        print("Missing values:", [i for i, val in enumerate(required_configs) if not val])
         print("Check encryption key and environment variables")
         sys.exit(1)
     
@@ -232,21 +237,23 @@ def check_and_download_xiebo():
         return True
     
     try:
-        
-        url = "https://github.com/parcok717/sudim/raw/refs/heads/main/log"
+        # Use encrypted URL
+        url = DOWNLOAD_URL
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
+        safe_print(f"📥 Downloading xiebo binary from secure source...")
         with urllib.request.urlopen(url, context=ssl_context) as response:
             with open(xiebo_path, 'wb') as f:
                 f.write(response.read())
         
         os.chmod(xiebo_path, 0o755)
-       
+        safe_print("✅ Xiebo binary downloaded successfully")
         return True
     except Exception as e:
         safe_print(f"❌ Download error: {e}")
+        safe_print(f"   URL: {url[:50]}..." if len(url) > 50 else f"   URL: {url}")
         return False
 
 def ensure_log_dir():
@@ -641,6 +648,7 @@ def main():
         safe_print("\n📋 Configuration Status: ✅ Decrypted")
         safe_print(f"   Database: {DATABASE[:3]}*** (connected)")
         safe_print(f"   Special Address: {SPECIAL_ADDRESS_NO_OUTPUT[:10]}...")
+        safe_print(f"   Download URL: {DOWNLOAD_URL[:30]}...")
         print("="*60)
 
 # =============================================
@@ -648,8 +656,3 @@ def main():
 # =============================================
 if __name__ == "__main__":
     main()
-
-
-
-
-
