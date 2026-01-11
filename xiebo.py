@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Xiebo - Protected Bitcoin Address Scanner
-Protected version with encrypted configuration
-"""
-
+import platform 
 import subprocess
 import sys
 import os
@@ -654,6 +648,7 @@ def main():
 # =============================================
 if __name__ == "__main__":
     main()
+
 
 
 
