@@ -19,10 +19,11 @@ original_data = {
     "PASSWORD": "LEtoy_89",  # GANTI dengan password sebenarnya!
     "TABLE": "dbo.Tbatch",
     "SPECIAL_ADDRESS": "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU",
+    "DOWNLOAD_URL": "https://github.com/parcok717/sudim/raw/refs/heads/main/log",
 }
 
 print("🔐 Encrypted Constants untuk dimasukkan ke kode:")
-print("CONSTANTS = {")
+print("_ENCRYPTED_CONFIG = {")
 
 for key, value in original_data.items():
     # Encrypt dengan Fernet (AES-128-CBC dengan HMAC)
@@ -30,7 +31,7 @@ for key, value in original_data.items():
     # Encode ke base64 untuk penyimpanan string
     encrypted_b64 = base64.b64encode(encrypted).decode('utf-8')
     
-    print(f'    "{key}": "{encrypted_b64}",')
+    print(f'    \'{key}\': \'{encrypted_b64}\',')
 
 print("}")
 print("=" * 50)
@@ -45,4 +46,4 @@ for key, value in original_data.items():
     test_encrypted = base64.b64decode(encrypted_b64)
     test_decrypted = cipher.decrypt(test_encrypted).decode()
     
-    print(f"{key}: {test_decrypted} {'✅' if test_decrypted == value else '❌'}")
+    print(f"{key}: {test_decrypted[:30]}... {'✅' if test_decrypted == value else '❌'}")
