@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build script with fixed imports for PyInstaller & Cryptography Fix
+BUILD SCRIPT: FIXED FOR CRYPTOGRAPHY & URLLIB
 """
 
 import os
@@ -8,23 +8,20 @@ import sys
 import shutil
 import subprocess
 import site
-import cryptography
 from datetime import datetime
 
 def fix_imports_in_xiebo():
-    """Fix imports in xiebo.py for PyInstaller"""
-    print("🔧 Fixing imports for PyInstaller...")
-    
+    """Memastikan import platform ada di xiebo.py untuk mencegah error PyInstaller"""
+    print("🔧 Fixing imports in xiebo.py...")
     if not os.path.exists('xiebo.py'):
-        print("❌ Error: xiebo.py not found!")
+        print("❌ Error: xiebo.py tidak ditemukan!")
         return False
 
     with open('xiebo.py', 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Pastikan platform di-import di bagian atas
     lines = content.split('\n')
-    has_platform = any('import platform' in line for line in lines[:20])
+    has_platform = any('import platform' in line for line in lines[:25])
     
     if not has_platform:
         for i, line in enumerate(lines):
@@ -32,62 +29,61 @@ def fix_imports_in_xiebo():
                 lines.insert(i, 'import platform')
                 break
         content = '\n'.join(lines)
-    
-    with open('xiebo.py', 'w', encoding='utf-8') as f:
-        f.write(content)
+        with open('xiebo.py', 'w', encoding='utf-8') as f:
+            f.write(content)
     
     print("✅ Imports fixed")
     return True
 
 def build_xiebo():
-    """Build Xiebo executable"""
+    """Proses Build Utama"""
     print("="*60)
-    print("🔧 BUILDING XIEBO EXECUTABLE")
+    print("🚀 STARTING BUILD PROCESS")
     print("="*60)
     
-    # Step 0: Fix imports
+    # 0. Persiapan Path
+    python_exe = sys.executable
+    site_pkgs = site.getsitepackages()
+    
+    # 1. Fix Imports
     if not fix_imports_in_xiebo():
         return False
     
-    # Step 1: Clean
-    print("\n1️⃣ Cleaning...")
+    # 2. Cleaning
+    print("\n1️⃣ Cleaning old build files...")
     for d in ['dist', 'build', 'obfuscated', '__pycache__']:
         if os.path.exists(d):
             shutil.rmtree(d, ignore_errors=True)
     
-    # Step 2: Obfuscate
-    print("\n2️⃣ Obfuscating...")
+    # 3. Obfuscate dengan PyArmor
+    print("\n2️⃣ Obfuscating code...")
     obfuscated = False
     try:
-        # Menjalankan pyarmor menggunakan python yang sedang aktif
-        result = subprocess.run([sys.executable, '-m', 'pyarmor.cli', 'gen', '-O', 'obfuscated', 'xiebo.py'], 
+        # Mencoba menjalankan pyarmor sebagai modul
+        result = subprocess.run([python_exe, '-m', 'pyarmor.cli', 'gen', '-O', 'obfuscated', 'xiebo.py'], 
                               capture_output=True, text=True)
         if result.returncode == 0:
             obfuscated = True
             print("✅ PyArmor successful")
         else:
-            # Coba perintah alternatif jika versi pyarmor berbeda
+            # Fallback ke command langsung
             result = subprocess.run(['pyarmor', 'gen', '-O', 'obfuscated', 'xiebo.py'], 
                                   capture_output=True, text=True)
             if result.returncode == 0:
                 obfuscated = True
-                print("✅ PyArmor successful (legacy command)")
-            else:
-                print(f"⚠️ PyArmor failed, proceeding with original file")
-    except Exception as e:
-        print(f"⚠️ PyArmor not available: {e}")
-    
+                print("✅ PyArmor successful (fallback)")
+    except:
+        pass
+
     if not obfuscated:
+        print("⚠️ PyArmor failed/not found. Using original file.")
         os.makedirs('obfuscated', exist_ok=True)
         shutil.copy('xiebo.py', 'obfuscated/xiebo.py')
-        print("📁 Using original file (non-obfuscated)")
+
+    # 4. Compile dengan PyInstaller
+    print("\n3️⃣ Compiling with PyInstaller...")
     
-    # Step 3: Compile
-    print("\n3️⃣ Compiling with Cryptography support...")
-    
-    # Dapatkan path site-packages secara dinamis
-    site_pkgs = site.getsitepackages()
-    
+    # Daftar hidden imports yang sangat spesifik untuk mengatasi ModuleNotFoundError
     hidden_imports = [
         'platform',
         'pyodbc',
@@ -99,115 +95,81 @@ def build_xiebo():
         'base64',
         'ssl',
         'json',
-        'logging'
+        'logging',
+        'urllib',
+        'urllib.request',
+        'urllib.parse',
+        'urllib.error',
+        'http.client',
+        'email.message' # Kadang dibutuhkan oleh urllib
     ]
     
-    # Gunakan sys.executable -m PyInstaller untuk menjamin environment yang sama
-    cmd = [sys.executable, '-m', 'PyInstaller', '--onefile', '--console', '--clean', '--name=xiebo_protected']
+    cmd = [
+        python_exe, '-m', 'PyInstaller',
+        '--onefile',
+        '--console',
+        '--clean',
+        '--name=xiebo_protected'
+    ]
     
-    # Tambahkan path pencarian module
+    # Menambahkan paths agar PyInstaller menemukan library yang terinstall
     for sp in site_pkgs:
         cmd.extend(['--paths', sp])
         
-    # Tambah hidden imports
+    # Menambahkan hidden imports
     for imp in hidden_imports:
         cmd.extend(['--hidden-import', imp])
+
+    # Memaksa pengambilan seluruh sub-modul penting
+    cmd.extend(['--collect-submodules', 'urllib'])
+    cmd.extend(['--collect-submodules', 'cryptography'])
     
-    # Target file
+    # Target file yang sudah di-obfuscate
     cmd.append('obfuscated/xiebo.py')
     
-    print(f"Running: PyInstaller on {sys.executable}")
+    print(f"Executing: {' '.join(cmd[:10])}...")
     
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
         if result.returncode != 0:
-            print(f"❌ PyInstaller failed:\n{result.stderr}")
+            print(f"❌ PyInstaller Error:\n{result.stderr}")
             return False
-        
         print("✅ Compilation successful")
-        
     except Exception as e:
-        print(f"❌ Error during compilation: {e}")
+        print(f"❌ Critical Error: {e}")
         return False
-    
-    # Step 4: Verify and create output
-    print("\n4️⃣ Creating output...")
-    
-    exec_name = 'xiebo_protected'
-    if os.name == 'nt':
-        exec_name += '.exe'
-    
+
+    # 5. Finalisasi
+    print("\n4️⃣ Finalizing output...")
+    exec_name = 'xiebo_protected' + ('.exe' if os.name == 'nt' else '')
     src_path = os.path.join('dist', exec_name)
     
     if os.path.exists(src_path):
-        os.makedirs('dist/protected', exist_ok=True)
-        dst_path = os.path.join('dist/protected', exec_name)
-        
+        out_dir = 'dist/protected'
+        os.makedirs(out_dir, exist_ok=True)
+        dst_path = os.path.join(out_dir, exec_name)
         shutil.copy(src_path, dst_path)
         
         if os.name != 'nt':
             os.chmod(dst_path, 0o755)
-        
-        print(f"📦 Executable: {dst_path}")
-        create_launcher(exec_name)
-        
-        print("\n" + "="*60)
-        print("🎉 BUILD SUCCESSFUL!")
+            
+        print(f"\n" + "="*60)
+        print(f"🎉 SUCCESS!")
+        print(f"📂 Lokasi File: {dst_path}")
         print("="*60)
         return True
     else:
-        print(f"❌ Executable not found at {src_path}")
+        print("❌ Error: Executable tidak ditemukan di folder dist.")
         return False
 
-def create_launcher(exec_name):
-    """Create simple launcher script"""
-    launcher = f'''#!/usr/bin/env python3
-import os
-import sys
-import subprocess
-
-def main():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    exec_path = os.path.join(script_dir, "{exec_name}")
-    
-    if not os.path.exists(exec_path):
-        print("Error: Executable not found at", exec_path)
-        sys.exit(1)
-    
-    if os.name != "nt":
-        try:
-            os.chmod(exec_path, 0o755)
-        except:
-            pass
-    
-    # Run
-    cmd = [exec_path] + sys.argv[1:]
-    try:
-        result = subprocess.run(cmd)
-        sys.exit(result.returncode)
-    except Exception as e:
-        print("Error:", e)
-        sys.exit(1)
-
 if __name__ == "__main__":
-    main()
-'''
-    launcher_path = 'dist/protected/run_xiebo.py'
-    with open(launcher_path, 'w') as f:
-        f.write(launcher)
-    if os.name != 'nt':
-        os.chmod(launcher_path, 0o755)
-    print(f"📄 Launcher created: {launcher_path}")
-
-if __name__ == "__main__":
-    # Verifikasi awal cryptography sebelum mulai
+    # Cek apakah modul utama tersedia sebelum build
     try:
         import cryptography
-        print(f"✅ Cryptography detected in build script (v{cryptography.__version__})")
-    except ImportError:
-        print("❌ Error: Cryptography must be installed to run this build script.")
-        print("Run: pip install cryptography")
+        import urllib.request
+    except ImportError as e:
+        print(f"❌ Error: Library {e.name} belum terinstall di Python ini.")
+        print(f"Silakan jalankan: {sys.executable} -m pip install cryptography")
         sys.exit(1)
 
     success = build_xiebo()
