@@ -478,6 +478,38 @@ def parse_xiebo_log(gpu_id, target_address=None):
     except:
         return found_info
 
+def check_gpu_execution_errors(gpu_id):
+    """Check log for GPU execution errors"""
+    log_file = get_gpu_log_file(gpu_id)
+    if not os.path.exists(log_file):
+        return False
+    
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Check for GPU kernel execution errors
+        error_patterns = [
+            r'no kernel image is available for execution on the device',
+            r'GPUEngine: Kernel:',
+            r'CUDA error',
+            r'GPU error',
+            r'unsupported GPU',
+            r'cannot launch kernel',
+            r'invalid device function',
+            r'incompatible GPU',
+            r'device not found',
+            r'failed to initialize',
+        ]
+        
+        for pattern in error_patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                return True
+        
+        return False
+    except:
+        return False
+
 # =============================================
 # PROCESS MONITORING
 # =============================================
@@ -536,23 +568,32 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         
         exit_code = monitor_xiebo_process(process, gpu_id, batch_id, range_info_str, is_special_address)
         
+        # Check for GPU execution errors in log
+        has_gpu_error = check_gpu_execution_errors(gpu_id)
+        
         # Parse results
         found_info = parse_xiebo_log(gpu_id, address)
         
-        # Update database based on actual results and exit code
+        # Update database based on actual results and execution status
         if batch_id is not None:
             found_status = 'Yes' if found_info['found'] else 'No'
             wif_val = found_info['wif_key'] if found_info['found'] else ''
             
-            # Determine final status based on execution result
-            if exit_code == 0:
-                # Process completed successfully - mark as done regardless of finding
+            # Determine final status based on execution result and GPU errors
+            if exit_code == 0 and not has_gpu_error:
+                # Process completed successfully without GPU errors - mark as done
                 final_status = 'done'
             else:
-                # Process failed - mark as error
+                # Process failed or GPU error detected - mark as error
                 final_status = 'error'
                 found_status = 'No'  # Reset found status on error
                 wif_val = ''
+                
+                # Log specific error details
+                if has_gpu_error:
+                    safe_print(f"[GPU {gpu_id}] ❌ GPU execution error detected in logs for batch {batch_id}")
+                else:
+                    safe_print(f"[GPU {gpu_id}] ❌ Process failed with exit code {exit_code} for batch {batch_id}")
             
             db_success = update_batch_status(batch_id, final_status, found_status, wif_val, True)
             
