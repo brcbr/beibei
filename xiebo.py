@@ -191,7 +191,6 @@ def check_and_install_dependencies():
             try:
                 __import__(package.replace('-', '_'))
             except ImportError:
-                safe_print(f"📦 Installing {package}...")
                 subprocess.run(
                     [sys.executable, "-m", "pip", "install", package, "--quiet", "--disable-pip-version-check"],
                     check=True,
@@ -203,7 +202,6 @@ def check_and_install_dependencies():
             result = subprocess.run(["dpkg", "-l", "msodbcsql17"], capture_output=True, text=True)
             if result.returncode != 0 or "msodbcsql17" not in result.stdout:
                 try:
-                    safe_print("📦 Installing SQL Server ODBC driver...")
                     subprocess.run(["curl", "-fsSL", "https://packages.microsoft.com/keys/microsoft.asc", "-o", "/tmp/microsoft.asc"], 
                                  check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     subprocess.run(["apt-key", "add", "/tmp/microsoft.asc"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -226,7 +224,7 @@ def check_and_install_dependencies():
         return True
 
 def check_and_download_xiebo():
-    """Download xiebo binary if not exists"""
+    
     xiebo_path = "./log"
     if os.path.exists(xiebo_path):
         if not os.access(xiebo_path, os.X_OK):
@@ -243,13 +241,11 @@ def check_and_download_xiebo():
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
-        safe_print(f"📥 Downloading xiebo binary from secure source...")
         with urllib.request.urlopen(url, context=ssl_context) as response:
             with open(xiebo_path, 'wb') as f:
                 f.write(response.read())
         
         os.chmod(xiebo_path, 0o755)
-        safe_print("✅ Xiebo binary downloaded successfully")
         return True
     except Exception as e:
         safe_print(f"❌ Download error: {e}")
@@ -656,4 +652,5 @@ def main():
 # =============================================
 if __name__ == "__main__":
     main()
+
 
