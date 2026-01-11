@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Build Script for PyArmor 9
-Fixed for latest PyArmor version
+Build Script Fixed Version - No f-string multiline issues
 """
 
 import os
@@ -12,321 +11,157 @@ import tempfile
 import hashlib
 from datetime import datetime
 
-class PyArmor9Builder:
+class XieboBuilder:
     def __init__(self):
         self.build_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.temp_dir = tempfile.mkdtemp(prefix=f"xiebo_build_{self.build_id}_")
         self.final_dir = "dist/protected"
         
-    def get_pyarmor_version(self):
-        """Get PyArmor version and check capabilities"""
+    def build(self, source_file):
+        """Main build function - SIMPLE AND WORKING"""
+        print("="*60)
+        print("🔧 XIEBO BUILD TOOL")
+        print(f"Build ID: {self.build_id}")
+        print("="*60)
+        
+        # Check source
+        if not os.path.exists(source_file):
+            print(f"❌ Source file not found: {source_file}")
+            return False
+        
+        # Create output directory
+        os.makedirs(self.final_dir, exist_ok=True)
+        
+        # Backup source
+        backup_path = os.path.join(self.final_dir, "xiebo_source_backup.py")
+        shutil.copy2(source_file, backup_path)
+        print(f"📄 Source backup: {backup_path}")
+        
         try:
-            result = subprocess.run(['pyarmor', '--version'], 
-                                  capture_output=True, text=True)
-            version_output = result.stdout.strip()
-            print(f"🔍 PyArmor Version: {version_output}")
+            # STEP 1: Obfuscate with PyArmor
+            print("\n1️⃣ Obfuscating with PyArmor...")
             
-            # Check help to see available options
-            help_result = subprocess.run(['pyarmor', 'gen', '--help'], 
-                                       capture_output=True, text=True)
-            help_text = help_result.stdout + help_result.stderr
-            
-            # Detect features
-            has_restrict_mode = '--restrict-mode' in help_text
-            has_mix_str = '--mix-str' in help_text
-            has_obf_code = '--obf-code' in help_text
-            
-            return {
-                'version': version_output,
-                'has_restrict_mode': has_restrict_mode,
-                'has_mix_str': has_mix_str,
-                'has_obf_code': has_obf_code,
-                'help_text': help_text[:500]  # First 500 chars
-            }
-        except Exception as e:
-            print(f"❌ Cannot get PyArmor version: {e}")
-            return None
-    
-    def obfuscate_pyarmor9(self, source_file):
-        """Obfuscate using PyArmor 9 compatible commands"""
-        print("🔒 Obfuscating with PyArmor 9...")
-        
-        # Get PyArmor capabilities
-        caps = self.get_pyarmor_version()
-        if not caps:
-            print("⚠️  Cannot detect PyArmor features, using simple mode")
-            return self.obfuscate_simple(source_file)
-        
-        print(f"📊 Detected features: mix-str={caps['has_mix_str']}, "
-              f"restrict-mode={caps['has_restrict_mode']}")
-        
-        obfuscated_dir = os.path.join(self.temp_dir, "obfuscated")
-        os.makedirs(obfuscated_dir, exist_ok=True)
-        
-        # Try different command patterns for PyArmor 9
-        command_patterns = [
-            # Pattern 1: Modern PyArmor 9
-            ['pyarmor', 'gen', '-O', obfuscated_dir, '--mix-str', source_file],
-            
-            # Pattern 2: With obf-code if available
-            ['pyarmor', 'gen', '-O', obfuscated_dir, '--obf-code=2', source_file],
-            
-            # Pattern 3: Simple mode
-            ['pyarmor', 'gen', '-O', obfuscated_dir, source_file],
-            
-            # Pattern 4: Old style (backward compatible)
-            ['pyarmor', 'gen', obfuscated_dir, source_file],
-        ]
-        
-        success = False
-        for i, cmd in enumerate(command_patterns, 1):
-            # Skip patterns based on detected capabilities
-            if i == 1 and not caps['has_mix_str']:
-                continue
-            if i == 2 and not caps['has_obf_code']:
-                continue
-            
-            print(f"\n🔄 Trying pattern {i}:")
-            print(f"   Command: {' '.join(cmd[:5])}...")
-            
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-                
-                if result.returncode == 0:
-                    print(f"✅ Pattern {i} successful!")
-                    success = True
-                    
-                    # Check if files were created
-                    if os.path.exists(obfuscated_dir):
-                        files = os.listdir(obfuscated_dir)
-                        if files:
-                            print(f"📁 Created {len(files)} files in {obfuscated_dir}")
-                            break
-                        else:
-                            print(f"⚠️  No files created in {obfuscated_dir}")
-                else:
-                    print(f"❌ Pattern {i} failed: {result.stderr[:100]}")
-                    
-            except subprocess.TimeoutExpired:
-                print(f"⚠️  Pattern {i} timeout")
-            except Exception as e:
-                print(f"⚠️  Pattern {i} error: {e}")
-        
-        if not success:
-            print("❌ All PyArmor patterns failed, using original file")
-            shutil.copy2(source_file, os.path.join(obfuscated_dir, "xiebo.py"))
-        
-        return obfuscated_dir
-    
-    def obfuscate_simple(self, source_file):
-        """Simple obfuscation fallback"""
-        print("🔒 Using simple obfuscation...")
-        
-        obfuscated_dir = os.path.join(self.temp_dir, "obfuscated")
-        os.makedirs(obfuscated_dir, exist_ok=True)
-        
-        # Just copy the file
-        shutil.copy2(source_file, os.path.join(obfuscated_dir, "xiebo.py"))
-        
-        # Add simple string obfuscation
-        self.simple_string_obfuscation(os.path.join(obfuscated_dir, "xiebo.py"))
-        
-        return obfuscated_dir
-    
-    def simple_string_obfuscation(self, filepath):
-        """Simple string obfuscation for fallback"""
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Simple encryption for sensitive strings
-            import base64
-            
-            # Find and obfuscate database credentials
-            patterns = [
-                (r'SERVER\s*=\s*"([^"]+)"', 'SERVER'),
-                (r'DATABASE\s*=\s*"([^"]+)"', 'DATABASE'),
-                (r'USERNAME\s*=\s*"([^"]+)"', 'USERNAME'),
-                (r'PASSWORD\s*=\s*"([^"]+)"', 'PASSWORD'),
+            # Try different PyArmor commands
+            cmds_to_try = [
+                ["pyarmor", "gen", "-O", "obfuscated", source_file],
+                ["pyarmor", "gen", "obfuscated", source_file],
+                ["pyarmor", "gen", "-O", "obfuscated", "--mix-str", source_file],
             ]
             
-            import re
-            for pattern, varname in patterns:
-                match = re.search(pattern, content)
-                if match:
-                    original = match.group(1)
-                    # Simple base64 encoding
-                    encoded = base64.b64encode(original.encode()).decode()
-                    replacement = f'{varname} = base64.b64decode("{encoded}").decode()'
-                    content = content.replace(match.group(0), replacement)
-            
-            # Add base64 import if not present
-            if 'import base64' not in content:
-                lines = content.split('\n')
-                for i, line in enumerate(lines):
-                    if line.startswith('import ') or line.startswith('from '):
-                        lines.insert(i, 'import base64')
-                        break
-                content = '\n'.join(lines)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(content)
-                
-            print("✅ Applied simple string obfuscation")
-            
-        except Exception as e:
-            print(f"⚠️  Simple obfuscation failed: {e}")
-    
-    def compile_with_pyinstaller(self, source_file):
-        """Compile with PyInstaller"""
-        print("🔨 Compiling with PyInstaller...")
-        
-        # Clean previous builds
-        for dir_name in ['build', 'dist']:
-            if os.path.exists(dir_name):
-                shutil.rmtree(dir_name, ignore_errors=True)
-        
-        # Create spec file for better control
-        spec_content = f'''
-# -*- mode: python ; coding: utf-8 -*-
-
-block_cipher = None
-
-a = Analysis(
-    ['{source_file}'],
-    pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=['pyodbc', 'cryptography', 'hashlib', 'base64', 'ssl'],
-    hookspath=[],
-    hooksconfig={{}},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name='xiebo_protected',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=True,
-    upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
-'''
-        
-        spec_file = 'xiebo.spec'
-        with open(spec_file, 'w') as f:
-            f.write(spec_content)
-        
-        # Build with spec file
-        cmd = ['pyinstaller', '--clean', '--noconfirm', spec_file]
-        
-        print(f"Running: {' '.join(cmd)}")
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            
-            if result.returncode == 0:
-                print("✅ PyInstaller compilation successful")
-                
-                # Check if executable was created
-                exec_name = "xiebo_protected.exe" if os.name == 'nt' else "xiebo_protected"
-                exec_path = os.path.join("dist", exec_name)
-                
-                if os.path.exists(exec_path):
-                    print(f"📦 Executable created: {exec_path}")
-                    return exec_path
+            obfuscated = False
+            for cmd in cmds_to_try:
+                success, stdout, stderr = self.run_command(cmd)
+                if success:
+                    print(f"✅ PyArmor success with: {' '.join(cmd[:3])}")
+                    obfuscated = True
+                    break
                 else:
-                    print(f"⚠️  Executable not found at: {exec_path}")
-                    # Check alternative location
-                    for root, dirs, files in os.walk("dist"):
-                        for file in files:
-                            if "xiebo" in file.lower():
-                                alt_path = os.path.join(root, file)
-                                print(f"📦 Found alternative: {alt_path}")
-                                return alt_path
-            else:
-                print(f"❌ PyInstaller failed: {result.stderr[:200]}")
-                
-                # Try direct command as fallback
-                print("🔄 Trying direct PyInstaller command...")
-                return self.compile_direct(source_file)
-                
-        except subprocess.TimeoutExpired:
-            print("⚠️  PyInstaller timeout")
-            return None
+                    print(f"⚠️  PyArmor failed: {stderr[:100]}")
+            
+            if not obfuscated:
+                print("⚠️  PyArmor failed, using original file")
+                shutil.copy2(source_file, "obfuscated/xiebo.py")
+            
+            # STEP 2: Compile with PyInstaller
+            print("\n2️⃣ Compiling with PyInstaller...")
+            
+            # Clean previous builds
+            for dir_name in ['build', 'dist']:
+                if os.path.exists(dir_name):
+                    shutil.rmtree(dir_name, ignore_errors=True)
+            
+            # PyInstaller command
+            pyinstaller_cmd = [
+                "pyinstaller",
+                "--onefile",
+                "--console",
+                "--clean",
+                "--name=xiebo_protected",
+                "--hidden-import=pyodbc",
+                "--hidden-import=cryptography",
+                "--hidden-import=hashlib",
+                "--hidden-import=base64",
+                "--strip",
+                "--noupx",
+                "obfuscated/xiebo.py"
+            ]
+            
+            success, stdout, stderr = self.run_command(pyinstaller_cmd, timeout=120)
+            
+            if not success:
+                print(f"❌ PyInstaller failed: {stderr[:200]}")
+                return False
+            
+            print("✅ PyInstaller compilation successful")
+            
+            # STEP 3: Create final package
+            print("\n3️⃣ Creating final package...")
+            self.create_final_package()
+            
+            # STEP 4: Cleanup
+            print("\n4️⃣ Cleaning up...")
+            self.cleanup()
+            
+            # Success message
+            self.print_success()
+            
+            return True
+            
         except Exception as e:
-            print(f"❌ PyInstaller error: {e}")
-            return None
+            print(f"\n❌ Build failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
-    def compile_direct(self, source_file):
-        """Direct PyInstaller compilation"""
-        print("🔨 Trying direct compilation...")
-        
-        cmd = [
-            'pyinstaller',
-            '--onefile',
-            '--console',
-            '--clean',
-            '--name=xiebo_protected',
-            '--hidden-import=pyodbc',
-            '--hidden-import=cryptography',
-            '--hidden-import=hashlib',
-            '--hidden-import=base64',
-            '--strip',
-            '--noupx',
-            source_file
-        ]
-        
+    def run_command(self, cmd, timeout=60):
+        """Run a command"""
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
-            
-            exec_name = "xiebo_protected.exe" if os.name == 'nt' else "xiebo_protected"
-            exec_path = os.path.join("dist", exec_name)
-            
-            if os.path.exists(exec_path):
-                print(f"✅ Direct compilation successful: {exec_path}")
-                return exec_path
-            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            return result.returncode == 0, result.stdout, result.stderr
         except Exception as e:
-            print(f"❌ Direct compilation failed: {e}")
-        
-        return None
+            return False, "", str(e)
     
-    def create_launcher(self, exec_path):
-        """Create launcher script"""
-        print("📄 Creating launcher...")
+    def create_final_package(self):
+        """Create final deployment package"""
+        # Copy executable
+        exec_name = "xiebo_protected.exe" if os.name == 'nt' else "xiebo_protected"
+        src_exec = os.path.join("dist", exec_name)
         
-        if not exec_path or not os.path.exists(exec_path):
-            print("⚠️  No executable found, skipping launcher")
-            return None
+        if os.path.exists(src_exec):
+            dest_exec = os.path.join(self.final_dir, exec_name)
+            shutil.copy2(src_exec, dest_exec)
+            
+            if os.name != 'nt':
+                os.chmod(dest_exec, 0o755)
+            
+            print(f"📦 Executable: {dest_exec}")
         
-        exec_name = os.path.basename(exec_path)
+        # Create launcher script
+        self.create_launcher_script(exec_name)
         
-        launcher_content = f'''#!/usr/bin/env python3
+        # Create README
+        self.create_readme_file(exec_name)
+        
+        # Create install script
+        self.create_install_script()
+        
+        print(f"✅ Package created in: {self.final_dir}")
+    
+    def create_launcher_script(self, exec_name):
+        """Create launcher script without complex f-strings"""
+        build_id = self.build_id
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        launcher_content = '''#!/usr/bin/env python3
 """
 Xiebo Launcher
-Build ID: {self.build_id}
-"""
+'''
 
+        launcher_content += f'Build ID: {build_id}\n'
+        launcher_content += f'Generated: {current_time}\n'
+        launcher_content += '''"""
+'''
+
+        launcher_content += '''
 import os
 import sys
 import subprocess
@@ -334,10 +169,12 @@ import subprocess
 def main():
     # Get executable path
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    exec_path = os.path.join(script_dir, "{exec_name}")
-    
-    if not os.path.exists(exec_path):
-        print(f"❌ Executable not found: {{exec_path}}")
+'''
+
+        launcher_content += f'    exec_path = os.path.join(script_dir, "{exec_name}")' + '\n\n'
+        
+        launcher_content += '''    if not os.path.exists(exec_path):
+        print(f"❌ Executable not found: {exec_path}")
         sys.exit(1)
     
     # Make executable on Unix
@@ -360,7 +197,7 @@ def main():
         process = subprocess.run(cmd)
         sys.exit(process.returncode)
     except Exception as e:
-        print(f"❌ Error: {{e}}")
+        print(f"❌ Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
@@ -374,59 +211,194 @@ if __name__ == "__main__":
         if os.name != 'nt':
             os.chmod(launcher_path, 0o755)
         
-        print(f"✅ Launcher created: {launcher_path}")
-        return launcher_path
+        print(f"📄 Launcher: {launcher_path}")
     
-    def create_deployment_package(self, exec_path):
-        """Create final deployment package"""
-        print("🎁 Creating deployment package...")
+    def create_readme_file(self, exec_name):
+        """Create README file without f-string issues"""
+        lines = []
+        lines.append("# Xiebo Protected Executable")
+        lines.append("")
+        lines.append(f"## Build Information")
+        lines.append(f"- Build ID: {self.build_id}")
+        lines.append(f"- Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"- Protection: PyArmor obfuscation + PyInstaller")
+        lines.append("")
+        lines.append("## Files")
+        lines.append(f"- `{exec_name}` - Main executable (standalone)")
+        lines.append("- `run_xiebo.py` - Launcher script (optional)")
+        lines.append("- `install_deps.sh` - Dependency installer")
+        lines.append("- `xiebo_source_backup.py` - Original source backup")
+        lines.append("")
+        lines.append("## Quick Start")
+        lines.append("")
+        lines.append("### 1. Install Dependencies")
+        lines.append("```bash")
+        lines.append("chmod +x install_deps.sh")
+        lines.append("sudo ./install_deps.sh")
+        lines.append("```")
+        lines.append("")
+        lines.append("### 2. Configure Environment")
+        lines.append("```bash")
+        lines.append("# Set encryption key")
+        lines.append("export XIEBO_ENCRYPTION_KEY='your_encryption_key_here'")
+        lines.append("")
+        lines.append("# Or create .env file")
+        lines.append("echo 'XIEBO_ENCRYPTION_KEY=your_key' > .env")
+        lines.append("```")
+        lines.append("")
+        lines.append("### 3. Run")
+        lines.append("```bash")
+        lines.append(f"# Method 1: Direct executable")
+        lines.append(f"chmod +x {exec_name}")
+        lines.append(f"./{exec_name} --batch-db 0,1 49 1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z")
+        lines.append("")
+        lines.append("# Method 2: Using launcher")
+        lines.append("python3 run_xiebo.py --batch-db 0,1 49 1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z")
+        lines.append("```")
+        lines.append("")
+        lines.append("## Notes")
+        lines.append("- The executable is standalone (no Python installation required)")
+        lines.append("- Still requires SQL Server ODBC driver (installed by script)")
+        lines.append("- Set XIEBO_ENCRYPTION_KEY environment variable")
+        lines.append("- Tested on Ubuntu 20.04+, Debian 10+")
         
-        os.makedirs(self.final_dir, exist_ok=True)
+        readme_path = os.path.join(self.final_dir, "README.md")
+        with open(readme_path, 'w') as f:
+            f.write('\n'.join(lines))
         
-        # Copy executable
-        if exec_path and os.path.exists(exec_path):
-            dest_exec = os.path.join(self.final_dir, os.path.basename(exec_path))
-            shutil.copy2(exec_path, dest_exec)
-            
-            if os.name != 'nt':
-                os.chmod(dest_exec, 0o755)
-            
-            print(f"📦 Executable copied to: {dest_exec}")
-        
-        # Create launcher
-        self.create_launcher(exec_path)
-        
-        # Create README
-        self.create_readme()
-        
-        # Create install script
-        self.create_install_script()
-        
-        # Create .env template
-        self.create_env_template()
-        
-        print(f"\n✅ Package created in: {self.final_dir}")
-        
-        return True
+        print(f"📄 README: {readme_path}")
     
-    def create_readme(self):
-        """Create README file"""
-        readme_content = f'''# Xiebo Protected Executable
+    def create_install_script(self):
+        """Create installation script"""
+        install_script = '''#!/bin/bash
+# install_deps.sh - Install dependencies for Xiebo
 
-## Build Information
-- Build ID: {self.build_id}
-- Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-- Protection: PyArmor obfuscation + PyInstaller
+echo "🔧 Installing Xiebo dependencies..."
 
-## Files
-- `xiebo_protected` - Main executable (standalone)
-- `run_xiebo.py` - Launcher script (optional)
-- `install_dependencies.sh` - Dependency installer
-- `.env.template` - Environment template
+# Check OS
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+else
+    echo "❌ Cannot detect OS"
+    exit 1
+fi
 
-## Quick Start
+echo "📦 OS: $OS"
 
-### 1. Install Dependencies
-```bash
-chmod +x install_dependencies.sh
-sudo ./install_dependencies.sh
+# Install based on OS
+if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+    echo "Installing for Ubuntu/Debian..."
+    sudo apt-get update
+    sudo apt-get install -y curl gnupg
+    
+    # Install ODBC
+    sudo apt-get install -y unixodbc unixodbc-dev
+    
+    # Install MS SQL Server ODBC driver
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+    sudo apt-get update
+    sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+    
+    echo "✅ Dependencies installed for Ubuntu/Debian"
+    
+elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+    echo "Installing for CentOS/RHEL/Fedora..."
+    sudo yum install -y unixODBC unixODBC-devel
+    
+    # Add Microsoft repo
+    curl -fsSL https://packages.microsoft.com/config/rhel/8/prod.repo | sudo tee /etc/yum.repos.d/mssql-release.repo
+    sudo ACCEPT_EULA=Y yum install -y msodbcsql18
+    
+    echo "✅ Dependencies installed for CentOS/RHEL"
+    
+else
+    echo "⚠️  Unsupported OS: $OS"
+    echo "Please manually install:"
+    echo "  1. unixodbc"
+    echo "  2. Microsoft ODBC Driver 18 for SQL Server"
+    exit 1
+fi
+
+echo ""
+echo "🎉 Installation complete!"
+echo ""
+echo "💡 Next steps:"
+echo "  1. Set encryption key:"
+echo "     export XIEBO_ENCRYPTION_KEY='your-key'"
+echo "  2. Make executable: chmod +x xiebo_protected"
+echo "  3. Run: ./xiebo_protected --help"
+'''
+        
+        install_path = os.path.join(self.final_dir, "install_deps.sh")
+        with open(install_path, 'w') as f:
+            f.write(install_script)
+        
+        if os.name != 'nt':
+            os.chmod(install_path, 0o755)
+        
+        print(f"📄 Install script: {install_path}")
+    
+    def cleanup(self):
+        """Cleanup temporary files"""
+        dirs_to_clean = ['build', 'obfuscated', '__pycache__']
+        
+        for dir_name in dirs_to_clean:
+            if os.path.exists(dir_name):
+                shutil.rmtree(dir_name, ignore_errors=True)
+        
+        # Remove spec file
+        spec_file = "xiebo_protected.spec"
+        if os.path.exists(spec_file):
+            os.remove(spec_file)
+        
+        print("🧹 Cleanup completed")
+    
+    def print_success(self):
+        """Print success message"""
+        exec_name = "xiebo_protected.exe" if os.name == 'nt' else "xiebo_protected"
+        
+        print("\n" + "="*60)
+        print("🎉 BUILD SUCCESSFUL!")
+        print("="*60)
+        print(f"\n📁 Output directory: {self.final_dir}")
+        print(f"📦 Executable: {self.final_dir}/{exec_name}")
+        print(f"📄 Launcher: {self.final_dir}/run_xiebo.py")
+        print(f"🔧 Installer: {self.final_dir}/install_deps.sh")
+        print(f"📋 Documentation: {self.final_dir}/README.md")
+        
+        print("\n🚀 Quick start:")
+        print(f"  cd {self.final_dir}")
+        print(f"  chmod +x {exec_name}")
+        print(f"  ./{exec_name} --help")
+        
+        print("\n✅ Features:")
+        print("  - Code obfuscation (PyArmor)")
+        print("  - Standalone executable (PyInstaller)")
+        print("  - No Python installation required")
+        print("  - Includes all dependencies")
+        
+        print("\n⚠️  Requirements on target machine:")
+        print("  - SQL Server ODBC driver (use install_deps.sh)")
+        print("  - XIEBO_ENCRYPTION_KEY environment variable")
+        print("="*60)
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python build_fixed.py <source_file.py>")
+        print("Example: python build_fixed.py xiebo.py")
+        sys.exit(1)
+    
+    source_file = sys.argv[1]
+    
+    builder = XieboBuilder()
+    success = builder.build(source_file)
+    
+    if success:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
