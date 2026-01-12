@@ -54,8 +54,7 @@ class ConfigDecryptor:
             except:
                 pass
         
-        # 3. HARDCODED KEY - PASTE YOUR KEY HERE
-        # WARNING: This is less secure, use environment variable for production
+       
         return b'mManUcRUuS9BktjhI-AOZypjyjiMpc95czM2wV0brzI='
     
     def _init_cipher(self):
