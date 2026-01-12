@@ -592,6 +592,9 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
                 # Log specific error details
                 if has_gpu_error:
                     safe_print(f"[GPU {gpu_id}] ❌ GPU execution error detected in logs for batch {batch_id}")
+                    # Set global stop flag to stop all workers when GPU error detected
+                    with STOP_SEARCH_FLAG_LOCK:
+                        STOP_SEARCH_FLAG = True
                 else:
                     safe_print(f"[GPU {gpu_id}] ❌ Process failed with exit code {exit_code} for batch {batch_id}")
             
